@@ -4,36 +4,58 @@ use crate::{
 use ndarray::{Data, DataOwned};
 use ndarray::prelude::*;
 use std::error::Error;
+use std::fmt;
 use std::io::{self, Read, Seek, Write};
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 use zip::result::ZipError;
 use zip::write::FileOptions;
 
-quick_error! {
-    /// An error writing a `.npz` file.
-    #[derive(Debug)]
-    pub enum WriteNpzError {
-        /// An error caused by I/O.
-        Io(err: io::Error) {
-            description("I/O error")
-            display(x) -> ("{}: {}", x.description(), err)
-            cause(err)
-            from()
+/// An error writing a `.npz` file.
+#[derive(Debug)]
+pub enum WriteNpzError {
+    /// An error caused by I/O.
+    Io(io::Error),
+    /// An error caused by the zip file.
+    Zip(ZipError),
+    /// An error caused by writing an inner `.npy` file.
+    Npy(WriteNpyError),
+}
+
+impl Error for WriteNpzError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            WriteNpzError::Io(err) => Some(err),
+            WriteNpzError::Zip(err) => Some(err),
+            WriteNpzError::Npy(err) => Some(err),
         }
-        /// An error caused by the zip file.
-        Zip(err: ZipError) {
-            description("zip file error")
-            display(x) -> ("{}: {}", x.description(), err)
-            cause(err)
-            from()
+    }
+}
+
+impl fmt::Display for WriteNpzError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            WriteNpzError::Io(err) => write!(f, "I/O error: {}", err),
+            WriteNpzError::Zip(err) => write!(f, "zip file error: {}", err),
+            WriteNpzError::Npy(err) => write!(f, "error writing npy file to npz archive: {}", err),
         }
-        /// An error caused by writing an inner `.npy` file.
-        Npy(err: WriteNpyError) {
-            description("error writing npy file to npz archive")
-            display(x) -> ("{}: {}", x.description(), err)
-            cause(err)
-            from()
-        }
+    }
+}
+
+impl From<io::Error> for WriteNpzError {
+    fn from(err: io::Error) -> WriteNpzError {
+        WriteNpzError::Io(err)
+    }
+}
+
+impl From<ZipError> for WriteNpzError {
+    fn from(err: ZipError) -> WriteNpzError {
+        WriteNpzError::Zip(err)
+    }
+}
+
+impl From<WriteNpyError> for WriteNpzError {
+    fn from(err: WriteNpyError) -> WriteNpzError {
+        WriteNpzError::Npy(err)
     }
 }
 
