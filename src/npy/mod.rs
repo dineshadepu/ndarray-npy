@@ -147,50 +147,72 @@ pub trait ReadableElement: Sized {
     ) -> Result<Vec<Self>, Self::Error>;
 }
 
-quick_error! {
-    /// An error reading a `.npy` file.
-    #[derive(Debug)]
-    pub enum ReadNpyError {
-        /// An error caused by I/O.
-        Io(err: io::Error) {
-            description("I/O error")
-            display(x) -> ("{}: {}", x.description(), err)
-            cause(err)
-            from()
+/// An error reading a `.npy` file.
+#[derive(Debug)]
+pub enum ReadNpyError {
+    /// An error caused by I/O.
+    Io(io::Error),
+    /// An error caused by parsing the file header.
+    HeaderParse(HeaderParseError),
+    /// An error issued by the element type when reading the data.
+    ReadableElement(Box<dyn Error + Send + Sync>),
+    /// Overflow while computing the length of the array from the shape
+    /// described in the file header.
+    LengthOverflow,
+    /// Extra bytes are present between the end of the data and the end of the
+    /// file.
+    ExtraBytes,
+    /// An error caused by incorrect array length or dimensionality.
+    Shape(ShapeError),
+}
+
+impl Error for ReadNpyError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ReadNpyError::Io(err) => Some(err),
+            ReadNpyError::HeaderParse(err) => Some(err),
+            ReadNpyError::ReadableElement(err) => Some(&**err),
+            ReadNpyError::LengthOverflow => None,
+            ReadNpyError::ExtraBytes => None,
+            ReadNpyError::Shape(err) => Some(err),
         }
-        /// An error caused by parsing the file header.
-        HeaderParse(err: HeaderParseError) {
-            description("error parsing header")
-            display(x) -> ("{}: {}", x.description(), err)
-            cause(err)
-            from()
+    }
+}
+
+impl fmt::Display for ReadNpyError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ReadNpyError::Io(err) => write!(f, "I/O error: {}", err),
+            ReadNpyError::HeaderParse(err) => write!(f, "error parsing header: {}", err),
+            ReadNpyError::ReadableElement(err) => write!(f, "ReadableElement error: {}", err),
+            ReadNpyError::LengthOverflow => write!(f, "overflow computing length from shape"),
+            ReadNpyError::ExtraBytes => write!(f, "file had extra bytes before EOF"),
+            ReadNpyError::Shape(err) => write!(f, "data did not match shape in header: {}", err),
         }
-        /// An error issued by the element type when reading the data.
-        ReadableElement(err: Box<Error + Send + Sync>) {
-            description("ReadableElement error")
-            display(x) -> ("{}: {}", x.description(), err)
-            cause(&**err)
-            from(ReadPrimitiveError)
-        }
-        /// Overflow while computing the length of the array from the shape
-        /// described in the file header.
-        LengthOverflow {
-            description("overflow computing length from shape")
-            display(x) -> ("{}", x.description())
-        }
-        /// Extra bytes are present between the end of the data and the end of
-        /// the file.
-        ExtraBytes {
-            description("file had extra bytes before EOF")
-            display(x) -> ("{}", x.description())
-        }
-        /// An error caused by incorrect array length or dimensionality.
-        Shape(err: ShapeError) {
-            description("data did not match shape in header")
-            display(x) -> ("{}: {}", x.description(), err)
-            cause(err)
-            from()
-        }
+    }
+}
+
+impl From<io::Error> for ReadNpyError {
+    fn from(err: io::Error) -> ReadNpyError {
+        ReadNpyError::Io(err)
+    }
+}
+
+impl From<HeaderParseError> for ReadNpyError {
+    fn from(err: HeaderParseError) -> ReadNpyError {
+        ReadNpyError::HeaderParse(err)
+    }
+}
+
+impl From<ReadPrimitiveError> for ReadNpyError {
+    fn from(err: ReadPrimitiveError) -> ReadNpyError {
+        ReadNpyError::ReadableElement(Box::new(err))
+    }
+}
+
+impl From<ShapeError> for ReadNpyError {
+    fn from(err: ShapeError) -> ReadNpyError {
+        ReadNpyError::Shape(err)
     }
 }
 
