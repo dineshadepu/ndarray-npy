@@ -320,22 +320,40 @@ macro_rules! impl_writable_primitive {
     };
 }
 
-quick_error! {
-    #[derive(Debug)]
-    pub enum ReadPrimitiveError {
-        BadDescriptor(desc: PyValue) {
-            description("bad descriptor for this type")
-            display(x) -> ("{}: {}", x.description(), desc)
+/// An error reading a primitive element.
+#[derive(Debug)]
+pub enum ReadPrimitiveError {
+    /// Invalid descriptor for this type.
+    BadDescriptor(PyValue),
+    /// Invalid value for this type.
+    BadValue,
+    /// An error caused by I/O.
+    Io(io::Error),
+}
+
+impl Error for ReadPrimitiveError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ReadPrimitiveError::BadDescriptor(_) => None,
+            ReadPrimitiveError::BadValue => None,
+            ReadPrimitiveError::Io(err) => Some(err),
         }
-        BadValue {
-            description("invalid value for this type")
+    }
+}
+
+impl fmt::Display for ReadPrimitiveError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ReadPrimitiveError::BadDescriptor(desc) => write!(f, "bad descriptor for this type: {}", desc),
+            ReadPrimitiveError::BadValue => write!(f, "invalid value for this type"),
+            ReadPrimitiveError::Io(err) => write!(f, "I/O error: {}", err),
         }
-        Io(err: io::Error) {
-            description("I/O error")
-            display(x) -> ("{}: {}", x.description(), err)
-            cause(err)
-            from()
-        }
+    }
+}
+
+impl From<io::Error> for ReadPrimitiveError {
+    fn from(err: io::Error) -> ReadPrimitiveError {
+        ReadPrimitiveError::Io(err)
     }
 }
 
